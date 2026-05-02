@@ -1,7 +1,9 @@
 import { ipcMain } from 'electron'
+import * as fs from 'fs'
 import { v4 as uuidv4 } from 'uuid'
 import { getDb } from '../database'
 import { parseFile } from '../parsers'
+import { extractPDFText } from '../parsers/pdf'
 import { ParsedTransaction, ImportPreview, IpcResponse, Transaction } from '../../shared/types'
 
 interface ImportParseArgs {
@@ -17,6 +19,17 @@ interface ImportConfirmArgs {
 }
 
 export function registerImportHandlers(): void {
+  // Debug helper: returns raw text extracted from a PDF
+  ipcMain.handle('import:pdf-text', async (_, filePath: string): Promise<IpcResponse<string>> => {
+    try {
+      const buffer = fs.readFileSync(filePath)
+      const text = await extractPDFText(buffer)
+      return { success: true, data: text }
+    } catch (e) {
+      return { success: false, error: (e as Error).message }
+    }
+  })
+
   ipcMain.handle(
     'import:parse',
     async (_, args: ImportParseArgs): Promise<IpcResponse<ImportPreview>> => {

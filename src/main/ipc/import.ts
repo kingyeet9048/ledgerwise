@@ -5,6 +5,7 @@ import { getDb } from '../database'
 import { parseFile } from '../parsers'
 import { extractPDFText } from '../parsers/pdf'
 import { ParsedTransaction, ImportPreview, IpcResponse, Transaction } from '../../shared/types'
+import { recalcAccountBalance } from './balance-utils'
 
 interface ImportParseArgs {
   filePath: string
@@ -112,7 +113,7 @@ export function registerImportHandlers(): void {
             category_id, type, status, external_id, is_split,
             source_file, source_parser, import_session_id,
             security_symbol, quantity, price, created_at, updated_at
-          ) VALUES (?, ?, ?, ?, 'USD', ?, ?, ?, ?, 'pending', ?, 0, ?, ?, ?, ?, ?, ?, ?, ?)
+          ) VALUES (?, ?, ?, ?, 'USD', ?, ?, ?, ?, 'posted', ?, 0, ?, ?, ?, ?, ?, ?, ?, ?)
         `)
 
         const session = db
@@ -173,7 +174,7 @@ export function registerImportHandlers(): void {
         ).run(imported, skipped, sessionId)
 
         // Recalculate account balance
-        recalculateAccountBalance(db, accountId)
+        recalcAccountBalance(db, accountId)
 
         return { success: true, data: { imported, skipped } }
       } catch (e) {
@@ -183,26 +184,3 @@ export function registerImportHandlers(): void {
   )
 }
 
-function recalculateAccountBalance(db: ReturnType<typeof getDb>, accountId: string): void {
-  const result = db
-    .prepare(`
-      SELECT COALESCE(SUM(
-        CASE
-          WHEN type IN ('income','dividend','interest') THEN amount
-          WHEN type IN ('expense','fee') THEN -amount
-          WHEN type = 'buy' THEN -amount
-          WHEN type = 'sell' THEN amount
-          ELSE amount
-        END
-      ), 0) as balance
-      FROM transactions
-      WHERE account_id = ? AND status != 'pending'
-    `)
-    .get(accountId) as { balance: number }
-
-  db.prepare('UPDATE accounts SET balance = ?, updated_at = ? WHERE id = ?').run(
-    result.balance,
-    new Date().toISOString(),
-    accountId
-  )
-}

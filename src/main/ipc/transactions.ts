@@ -2,6 +2,7 @@ import { ipcMain } from 'electron'
 import { v4 as uuidv4 } from 'uuid'
 import { getDb } from '../database'
 import { Transaction, IpcResponse, TransactionFilter } from '../../shared/types'
+import { recalcAccountBalance } from './balance-utils'
 
 export function registerTransactionHandlers(): void {
   ipcMain.handle(
@@ -109,7 +110,7 @@ export function registerTransactionHandlers(): void {
         )
 
         // Update account balance
-        updateAccountBalance(db, tx.account_id)
+        recalcAccountBalance(db, tx.account_id)
 
         const created = db
           .prepare('SELECT * FROM transactions WHERE id = ?')
@@ -154,7 +155,7 @@ export function registerTransactionHandlers(): void {
           .prepare('SELECT * FROM transactions WHERE id = ?')
           .get(id) as Transaction
 
-        if (updated) updateAccountBalance(db, updated.account_id)
+        if (updated) recalcAccountBalance(db, updated.account_id)
 
         return { success: true, data: updated }
       } catch (e) {
@@ -170,7 +171,7 @@ export function registerTransactionHandlers(): void {
         .prepare('SELECT account_id FROM transactions WHERE id = ?')
         .get(id) as { account_id: string }
       db.prepare('DELETE FROM transactions WHERE id = ?').run(id)
-      if (tx) updateAccountBalance(db, tx.account_id)
+      if (tx) recalcAccountBalance(db, tx.account_id)
       return { success: true, data: true }
     } catch (e) {
       return { success: false, error: (e as Error).message }
@@ -200,24 +201,3 @@ export function registerTransactionHandlers(): void {
   )
 }
 
-function updateAccountBalance(db: ReturnType<typeof getDb>, accountId: string): void {
-  // Recalculate balance from transactions
-  const result = db
-    .prepare(`
-      SELECT
-        COALESCE(SUM(CASE WHEN type IN ('income','dividend','interest') THEN amount
-                         WHEN type IN ('expense','fee') THEN -amount
-                         WHEN type = 'buy' THEN -amount
-                         WHEN type = 'sell' THEN amount
-                         ELSE amount END), 0) as balance
-      FROM transactions
-      WHERE account_id = ? AND status != 'pending'
-    `)
-    .get(accountId) as { balance: number }
-
-  db.prepare('UPDATE accounts SET balance = ?, updated_at = ? WHERE id = ?').run(
-    result.balance,
-    new Date().toISOString(),
-    accountId
-  )
-}

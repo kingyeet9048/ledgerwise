@@ -81,7 +81,7 @@ function extractChaseTransactions(rawText: string): ParsedTransaction[] {
 
   for (const line of lines) {
     if (shouldSkipLine(line)) continue
-    if (isStopLine(line)) break
+    if (isStopLine(line)) continue
 
     for (const pat of linePatterns) {
       const m = line.match(pat)

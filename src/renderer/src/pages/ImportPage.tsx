@@ -8,11 +8,12 @@ type ImportStep = 'select' | 'preview' | 'confirm'
 
 const INSTITUTIONS = [
   { value: '', label: 'Auto-detect' },
-  { value: 'chase', label: 'Chase Checking/Savings' },
-  { value: 'chase_credit', label: 'Chase Credit Card' },
-  { value: 'wells_fargo', label: 'Wells Fargo' },
-  { value: 'robinhood', label: 'Robinhood' },
-  { value: 'vanguard', label: 'Vanguard' }
+  { value: 'chase', label: 'Chase Checking/Savings (CSV)' },
+  { value: 'chase_credit', label: 'Chase Credit Card (CSV/QFX)' },
+  { value: 'chase_pdf', label: 'Chase Statement (PDF)' },
+  { value: 'wells_fargo', label: 'Wells Fargo (CSV/QFX)' },
+  { value: 'robinhood', label: 'Robinhood (CSV)' },
+  { value: 'vanguard', label: 'Vanguard (CSV)' }
 ]
 
 function formatCurrency(amount: number): string {
@@ -184,7 +185,7 @@ export default function ImportPage(): React.ReactElement {
           >
             <Upload className="w-10 h-10 text-surface-500 mx-auto mb-3" />
             <p className="text-surface-200 font-medium mb-1">Drag & drop your file here</p>
-            <p className="text-surface-500 text-sm mb-4">Supports CSV, OFX, QFX, QIF formats</p>
+            <p className="text-surface-500 text-sm mb-4">Supports CSV, OFX, QFX, QIF, PDF (Chase statements)</p>
             <button
               onClick={() => fileInputRef.current?.click()}
               className="btn-secondary text-sm"
@@ -195,7 +196,7 @@ export default function ImportPage(): React.ReactElement {
               ref={fileInputRef}
               type="file"
               className="hidden"
-              accept=".csv,.ofx,.qfx,.qif"
+              accept=".csv,.ofx,.qfx,.qif,.pdf"
               onChange={(e) => {
                 const file = e.target.files?.[0]
                 if (file) handleFileSelect(file)

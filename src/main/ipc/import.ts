@@ -24,7 +24,7 @@ export function registerImportHandlers(): void {
         const db = getDb()
         const { filePath, accountId, institution } = args
 
-        const { transactions, parser } = parseFile(filePath, institution)
+        const { transactions, parser } = await parseFile(filePath, institution)
         const filename = filePath.split(/[/\\]/).pop() || filePath
 
         // Check for duplicates

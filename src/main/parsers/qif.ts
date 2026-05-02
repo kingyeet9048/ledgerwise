@@ -154,18 +154,12 @@ function buildTransaction(
     }
   } else {
     // Bank/CCard record
-    const amount = parseQIFAmount(record.amount || '0')
-
-    let type: ParsedTransaction['type']
-    if (accountType === 'ccard') {
-      type = amount < 0 ? 'expense' : 'income'
-    } else {
-      type = amount < 0 ? 'expense' : 'income'
-    }
+    const rawAmount = parseQIFAmount(record.amount || '0')
+    const type: ParsedTransaction['type'] = rawAmount < 0 ? 'expense' : 'income'
 
     return {
       date,
-      amount,
+      amount: parseFloat(Math.abs(rawAmount).toFixed(2)),
       payee: record.payee || '',
       memo: record.memo,
       type,

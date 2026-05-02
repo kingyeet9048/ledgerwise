@@ -84,13 +84,21 @@ export function registerBackupHandlers(): void {
 
       const db = getDb()
 
+      const ALLOWED_TABLES = new Set([
+        'accounts', 'categories', 'category_rules', 'transactions', 'splits',
+        'goals', 'goal_contributions', 'holdings', 'allocation_targets',
+        'recurring_items', 'plan_notes', 'net_worth_snapshots'
+      ])
+      const SAFE_IDENTIFIER = /^[a-zA-Z_][a-zA-Z0-9_]*$/
+
       const doRestore = db.transaction(() => {
-        const tables = Object.keys(backup.data)
+        const tables = Object.keys(backup.data).filter((t) => ALLOWED_TABLES.has(t))
         for (const table of tables) {
           db.prepare(`DELETE FROM ${table}`).run()
           const rows = backup.data[table] as Record<string, unknown>[]
           if (rows.length === 0) continue
-          const cols = Object.keys(rows[0])
+          const cols = Object.keys(rows[0]).filter((c) => SAFE_IDENTIFIER.test(c))
+          if (cols.length === 0) continue
           const placeholders = cols.map(() => '?').join(', ')
           const stmt = db.prepare(
             `INSERT OR REPLACE INTO ${table} (${cols.join(', ')}) VALUES (${placeholders})`

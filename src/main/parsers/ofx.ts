@@ -100,17 +100,23 @@ export function parseOFX(content: string): ParsedTransaction[] {
 
     if (!dtposted || !trnamt) continue
 
-    const amount = parseFloat(trnamt)
-    if (isNaN(amount)) continue
+    const rawAmount = parseFloat(trnamt)
+    if (isNaN(rawAmount)) continue
 
     const date = ofxDateToISO(dtposted)
 
+    // Prefer TRNTYPE for classification; fall back to sign when type is unknown
+    let type = mapOFXType(trntype)
+    if (type === 'other') {
+      type = rawAmount < 0 ? 'expense' : 'income'
+    }
+
     transactions.push({
       date,
-      amount,
+      amount: parseFloat(Math.abs(rawAmount).toFixed(2)),
       payee: name,
       memo,
-      type: mapOFXType(trntype),
+      type,
       external_id: fitid || undefined,
       isDuplicate: false
     })

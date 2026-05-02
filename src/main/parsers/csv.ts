@@ -167,8 +167,10 @@ function mapTransactionType(
   if (type.includes('fee') || type.includes('commission')) return 'fee'
   if (type.includes('interest')) return 'interest'
   if (type.includes('transfer')) return 'transfer'
-  if (type.includes('debit') || type.includes('payment') || type.includes('withdrawal')) return 'expense'
+  if (type.includes('debit') || type.includes('withdrawal')) return 'expense'
   if (type.includes('credit') || type.includes('deposit')) return 'income'
+  // "payment" is ambiguous (vendor payment = expense; credit card payment = income)
+  // so always fall back to amount sign for it
 
   // Fallback: use sign of amount
   if (typeof raw.amount === 'number') {
@@ -185,16 +187,16 @@ export function parseCSV(
   let records: Record<string, string>[]
   let template: InstitutionTemplate | null = null
 
-  // Try parsing with headers
-  try {
-    records = parse(content, {
-      columns: true,
-      skip_empty_lines: true,
-      trim: true,
-      relax_column_count: true
-    }) as Record<string, string>[]
-  } catch {
-    // Try without headers (Wells Fargo style)
+  // Resolve template early so we can decide whether to use a header row
+  if (institutionName) {
+    template = institutionTemplates.find((t) => t.institution === institutionName) || null
+  }
+
+  // Templates whose columns are positional indices ('0', '1', …) have no header row
+  const usesPositionalColumns =
+    template !== null && template.columns.every((c) => /^\d+$/.test(c.csvHeader))
+
+  if (usesPositionalColumns) {
     const rawRecords = parse(content, {
       columns: false,
       skip_empty_lines: true,
@@ -210,17 +212,40 @@ export function parseCSV(
         {} as Record<string, string>
       )
     )
+  } else {
+    // Try parsing with headers
+    try {
+      records = parse(content, {
+        columns: true,
+        skip_empty_lines: true,
+        trim: true,
+        relax_column_count: true
+      }) as Record<string, string>[]
+    } catch {
+      // Fallback: no header row — use positional indices
+      const rawRecords = parse(content, {
+        columns: false,
+        skip_empty_lines: true,
+        trim: true,
+        relax_column_count: true
+      }) as string[][]
+      records = rawRecords.map((row) =>
+        row.reduce(
+          (acc, val, idx) => {
+            acc[String(idx)] = val
+            return acc
+          },
+          {} as Record<string, string>
+        )
+      )
+    }
   }
 
   if (records.length === 0) return []
 
   const headers = Object.keys(records[0])
 
-  // Find template
-  if (institutionName) {
-    template = institutionTemplates.find((t) => t.institution === institutionName) || null
-  }
-
+  // template already resolved above if institutionName was provided; auto-detect if not
   if (!template) {
     template = detectTemplate(headers)
   }
@@ -280,13 +305,13 @@ export function parseCSV(
 
     transactions.push({
       date,
-      amount,
+      amount: parseFloat(Math.abs(amount).toFixed(2)),
       payee,
       memo,
       type: txType,
       external_id: undefined,
       security_symbol,
-      quantity,
+      quantity: quantity !== undefined ? Math.abs(quantity) : undefined,
       price,
       isDuplicate: false
     })

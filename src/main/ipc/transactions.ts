@@ -43,8 +43,10 @@ export function registerTransactionHandlers(): void {
         }
 
         const where = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : ''
-        const limit = filter.limit ? `LIMIT ${filter.limit}` : 'LIMIT 500'
-        const offset = filter.offset ? `OFFSET ${filter.offset}` : ''
+        const limitVal = filter.limit ? Math.max(1, Math.floor(Number(filter.limit))) : 500
+        const offsetVal = filter.offset ? Math.max(0, Math.floor(Number(filter.offset))) : 0
+        const limit = `LIMIT ${limitVal}`
+        const offset = offsetVal > 0 ? `OFFSET ${offsetVal}` : ''
 
         const sql = `
           SELECT t.*, c.name as category_name, a.name as account_name

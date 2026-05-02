@@ -10,7 +10,8 @@ let db: Database.Database | null = null
 
 function getDataDir(): string {
   if (!app.isPackaged) {
-    return app.getAppPath()
+    // __dirname is out/main/ in dev; two levels up is the project root
+    return path.join(__dirname, '../..')
   }
   return app.getPath('userData')
 }
@@ -71,6 +72,10 @@ function decryptDEK(encryptedDEK: string, iv: string, authTag: string, kek: Buff
 }
 
 export async function setupDatabase(passphrase: string): Promise<void> {
+  if (isSetup()) {
+    throw new Error('A database already exists. Please unlock it instead of creating a new one.')
+  }
+
   const dataDir = getDataDir()
   if (!fs.existsSync(dataDir)) {
     fs.mkdirSync(dataDir, { recursive: true })

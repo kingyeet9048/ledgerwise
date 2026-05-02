@@ -59,7 +59,12 @@ export default function App(): React.ReactElement {
   return (
     <HashRouter>
       <ToastContainer />
-      {appState === 'setup' && <SetupPage onComplete={handleSetupComplete} />}
+      {appState === 'setup' && (
+        <SetupPage
+          onComplete={handleSetupComplete}
+          onAlreadyExists={() => setAppState('locked')}
+        />
+      )}
       {appState === 'locked' && <UnlockPage onUnlock={handleUnlockComplete} />}
       {appState === 'unlocked' && (
         <Routes>

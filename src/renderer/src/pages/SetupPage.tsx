@@ -3,9 +3,10 @@ import { Shield, Eye, EyeOff, CheckCircle } from 'lucide-react'
 
 interface SetupPageProps {
   onComplete: () => void
+  onAlreadyExists?: () => void
 }
 
-export default function SetupPage({ onComplete }: SetupPageProps): React.ReactElement {
+export default function SetupPage({ onComplete, onAlreadyExists }: SetupPageProps): React.ReactElement {
   const [passphrase, setPassphrase] = useState('')
   const [confirm, setConfirm] = useState('')
   const [showPass, setShowPass] = useState(false)
@@ -47,6 +48,9 @@ export default function SetupPage({ onComplete }: SetupPageProps): React.ReactEl
       const res = await window.api.db.setup(passphrase)
       if (res.success) {
         onComplete()
+      } else if (res.error?.includes('already exists') && onAlreadyExists) {
+        // DB was created in a previous session — redirect to unlock
+        onAlreadyExists()
       } else {
         setError(res.error || 'Setup failed')
       }

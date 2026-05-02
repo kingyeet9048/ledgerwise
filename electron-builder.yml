@@ -1,0 +1,23 @@
+appId: com.ledgerwise.app
+productName: LedgerWise
+directories:
+  output: dist
+  buildResources: build
+files:
+  - out/**/*
+mac:
+  target:
+    - dmg
+    - zip
+  category: public.app-category.finance
+win:
+  target:
+    - nsis
+    - portable
+linux:
+  target:
+    - AppImage
+    - deb
+nsis:
+  oneClick: false
+  allowToChangeInstallationDirectory: true

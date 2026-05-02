@@ -6,9 +6,17 @@ const pdfParse = require('pdf-parse/lib/pdf-parse') as (buf: Buffer) => Promise<
 
 export async function parseChasePDF(buffer: Buffer): Promise<ParsedTransaction[]> {
   const data = await pdfParse(buffer)
-  // DEBUG — remove once parser is confirmed working
-  console.log('[PDF] raw text (first 3000 chars):\n', data.text.slice(0, 3000))
-  console.log('[PDF] raw text (chars 3000-6000):\n', data.text.slice(3000, 6000))
+  const txt = data.text
+  const acctIdx = txt.search(/ACCOUNT ACTIVITY/i)
+  console.log(`[PDF] total chars: ${txt.length}, ACCOUNT ACTIVITY at index: ${acctIdx}`)
+  if (acctIdx !== -1) {
+    console.log('[PDF] 2000 chars around ACCOUNT ACTIVITY:\n', txt.slice(Math.max(0, acctIdx - 100), acctIdx + 2000))
+  } else {
+    // Dump chars 6000-12000 to find transactions
+    console.log('[PDF] chars 6000-9000:\n', txt.slice(6000, 9000))
+    console.log('[PDF] chars 9000-12000:\n', txt.slice(9000, 12000))
+    console.log('[PDF] chars 12000-15000:\n', txt.slice(12000, 15000))
+  }
   const results = extractChaseTransactions(data.text)
   console.log(`[PDF] parsed ${results.length} transactions`)
   return results
@@ -25,24 +33,20 @@ export async function extractPDFText(buffer: Buffer): Promise<string> {
 // ---------------------------------------------------------------------------
 
 function extractChaseTransactions(rawText: string): ParsedTransaction[] {
-  // Normalise line endings
   const text = rawText.replace(/\r\n/g, '\n').replace(/\r/g, '\n')
 
-  // ── Determine statement year ──────────────────────────────────────────────
+  // ── Determine year + closing month ───────────────────────────────────────
+  // Raw text has no space: "Opening/Closing Date03/08/26 - 04/07/26"
   let year = new Date().getFullYear()
   let closingMonth = 12
 
-  // "Opening/Closing Date 03/08/26 - 04/07/26"  →  year=2026, closingMonth=4
-  const ocMatch = text.match(
-    /Opening\/Closing Date\s+(\d{2})\/\d{2}\/(\d{2,4})\s*-\s*(\d{2})\/\d{2}\/(\d{2,4})/i
-  )
+  const ocMatch = text.match(/Opening\/Closing Date\s*(\d{2})\/\d{2}\/(\d{2,4})\s*-\s*(\d{2})\/\d{2}\/(\d{2,4})/i)
   if (ocMatch) {
     const y = parseInt(ocMatch[4])
     year = y < 100 ? 2000 + y : y
     closingMonth = parseInt(ocMatch[3])
   } else {
-    // Fallback: "Statement Date: 04/07/26" on a page footer
-    const sdMatch = text.match(/Statement Date[:\s]+(\d{2})\/(\d{2})\/(\d{2,4})/i)
+    const sdMatch = text.match(/Statement Date[:\s]*(\d{2})\/(\d{2})\/(\d{2,4})/i)
     if (sdMatch) {
       const y = parseInt(sdMatch[3])
       year = y < 100 ? 2000 + y : y
@@ -50,83 +54,57 @@ function extractChaseTransactions(rawText: string): ParsedTransaction[] {
     }
   }
 
-  // ── Build a clean line list ───────────────────────────────────────────────
-  const lines = text
-    .split('\n')
-    .map((l) => l.trim())
-    .filter((l) => l.length > 0)
+  // ── Find the ACCOUNT ACTIVITY section ────────────────────────────────────
+  // Chase PDFs render this heading on the transaction pages.
+  const acctIdx = text.search(/ACCOUNT ACTIVITY/i)
+  const workText = acctIdx !== -1 ? text.slice(acctIdx) : text
 
-  // ── Strategy 1: single-line match "MM/DD  <payee>  <amount>" ─────────────
-  // Try progressively looser patterns in order.
-  const singleLinePatterns = [
-    // Two or more spaces before amount (preferred — reduces false positives)
-    /^(\d{2}\/\d{2})\s{2,}(.+?)\s{2,}(-?[\d,]+\.\d{2})\s*$/,
-    // One or more spaces (looser)
-    /^(\d{2}\/\d{2})\s+(.+?)\s+(-?[\d,]+\.\d{2})\s*$/,
-  ]
+  // Stop before the interest/totals section
+  const stopIdx = workText.search(/Total fees charged in \d{4}|INTEREST CHARGES/i)
+  const txText = stopIdx !== -1 ? workText.slice(0, stopIdx) : workText
 
   const results: ParsedTransaction[] = []
+
+  // ── Strategy A: line-by-line (with or without spaces) ────────────────────
+  //
+  // Chase transactions look like one of:
+  //   "03/21 Payment Thank You-Mobile -115.00"          (with spaces)
+  //   "03/21Payment Thank You-Mobile-115.00"            (no spaces — pdf-parse quirk)
+  //
+  // The amount is always the last numeric field on the line.
+  const linePatterns = [
+    /^(\d{2}\/\d{2})\s+(.+?)\s+(-?[\d,]+\.\d{2})\s*$/,     // spaces
+    /^(\d{2}\/\d{2})(.+?)(-?\d[\d,]*\.\d{2})\s*$/,           // no spaces (loose)
+  ]
+
+  const lines = txText.split('\n').map((l) => l.trim()).filter((l) => l.length > 0)
 
   for (const line of lines) {
     if (shouldSkipLine(line)) continue
     if (isStopLine(line)) break
 
-    for (const pat of singleLinePatterns) {
+    for (const pat of linePatterns) {
       const m = line.match(pat)
-      if (m) {
-        const tx = buildTransaction(m[1], m[2], m[3], year, closingMonth)
-        if (tx) results.push(tx)
-        break
-      }
+      if (!m) continue
+      const tx = buildTransaction(m[1], m[2], m[3], year, closingMonth)
+      if (tx) { results.push(tx); break }
     }
-  }
-
-  if (results.length > 0) return results
-
-  // ── Strategy 2: global regex across entire text ───────────────────────────
-  // Handles PDFs where pdf-parse joins adjacent column text without newlines.
-  const globalPat = /\b(\d{2}\/\d{2})\s{1,8}([A-Z][^\n]{3,60}?)\s{1,8}(-?[\d,]{1,10}\.\d{2})\b/gm
-  let gm: RegExpExecArray | null
-  while ((gm = globalPat.exec(text)) !== null) {
-    const payeeCandidate = gm[2].trim()
-    if (shouldSkipLine(payeeCandidate)) continue
-    const tx = buildTransaction(gm[1], payeeCandidate, gm[3], year, closingMonth)
-    if (tx) results.push(tx)
   }
 
   if (results.length > 0) return dedup(results)
 
-  // ── Strategy 3: multi-line — date on one line, amount nearby ─────────────
-  // Some PDFs extract columns separately: dates stacked, then descriptions,
-  // then amounts. We reconstruct by pairing dates with the next amount found.
-  const dateLines: { idx: number; dateStr: string }[] = []
-  const amountLines: { idx: number; amount: number }[] = []
-  const payeeLines: { idx: number; text: string }[] = []
-
-  for (let i = 0; i < lines.length; i++) {
-    const l = lines[i]
-    if (/^\d{2}\/\d{2}$/.test(l)) dateLines.push({ idx: i, dateStr: l })
-    else if (/^-?[\d,]+\.\d{2}$/.test(l)) amountLines.push({ idx: i, amount: parseFloat(l.replace(/,/g, '')) })
-    else if (l.length > 2 && !shouldSkipLine(l)) payeeLines.push({ idx: i, text: l })
+  // ── Strategy B: global scan — amount at end of any segment with a date ───
+  // Handles cases where text runs across line boundaries.
+  const globalPat = /(\d{2}\/\d{2})\s*([\s\S]+?)(-?\d[\d,]*\.\d{2})(?=\n|\d{2}\/\d{2}|$)/gm
+  let gm: RegExpExecArray | null
+  while ((gm = globalPat.exec(txText)) !== null) {
+    const raw = gm[2].replace(/\n/g, ' ').trim()
+    if (!raw || shouldSkipLine(raw)) continue
+    const tx = buildTransaction(gm[1], raw, gm[3], year, closingMonth)
+    if (tx) results.push(tx)
   }
 
-  if (dateLines.length > 0 && amountLines.length > 0) {
-    for (let d = 0; d < dateLines.length; d++) {
-      const dLine = dateLines[d]
-      // Find nearest amount after this date (before next date)
-      const nextDateIdx = dateLines[d + 1]?.idx ?? lines.length
-      const amt = amountLines.find((a) => a.idx > dLine.idx && a.idx < nextDateIdx)
-      if (!amt) continue
-      // Find nearest payee between date and amount
-      const payeeLine = payeeLines.find((p) => p.idx > dLine.idx && p.idx < amt.idx)
-      const payeeText = payeeLine?.text ?? ''
-      const tx = buildTransaction(dLine.dateStr, payeeText, String(amt.amount), year, closingMonth)
-      if (tx) results.push(tx)
-    }
-    if (results.length > 0) return dedup(results)
-  }
-
-  return []
+  return dedup(results)
 }
 
 // ---------------------------------------------------------------------------

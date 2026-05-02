@@ -1,12 +1,13 @@
 import { ParsedTransaction } from '../../shared/types'
 
-// pdf-parse is a CommonJS module — import dynamically to avoid ESM issues
-// eslint-disable-next-line @typescript-eslint/no-require-imports
-const pdfParse = require('pdf-parse')
+// Import the internal module directly to avoid pdf-parse's top-level test-file
+// read side-effect, which throws in Electron's main process.
+// eslint-disable-next-line @typescript-eslint/no-var-requires
+const pdfParse = require('pdf-parse/lib/pdf-parse') as (buf: Buffer) => Promise<{ text: string }>
 
 export async function parseChasePDF(buffer: Buffer): Promise<ParsedTransaction[]> {
   const data = await pdfParse(buffer)
-  return extractChaseTransactions(data.text as string)
+  return extractChaseTransactions(data.text)
 }
 
 function extractChaseTransactions(text: string): ParsedTransaction[] {
@@ -83,9 +84,7 @@ function extractChaseTransactions(text: string): ParsedTransaction[] {
       amount: parseFloat(Math.abs(amount).toFixed(2)),
       payee,
       memo: rawPayee !== payee ? rawPayee : undefined,
-      type,
-      status: 'posted',
-      currency: 'USD'
+      type
     })
   }
 

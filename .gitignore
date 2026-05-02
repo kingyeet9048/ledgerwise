@@ -5,3 +5,9 @@ out/
 *.local
 *.env
 *.tsbuildinfo
+
+# local database files
+ledgerwise.db
+ledgerwise.db-wal
+ledgerwise.db-shm
+key.json

@@ -9,6 +9,9 @@ import { migrations } from './migrations'
 let db: Database.Database | null = null
 
 function getDataDir(): string {
+  if (!app.isPackaged) {
+    return app.getAppPath()
+  }
   return app.getPath('userData')
 }
 

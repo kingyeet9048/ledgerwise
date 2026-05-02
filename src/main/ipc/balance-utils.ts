@@ -3,6 +3,24 @@ import { getDb } from '../database'
 
 const LIABILITY_TYPES = new Set(['credit_card', 'loan', 'student_loan', 'liability'])
 
+export function syncAllAccountBalances(db: ReturnType<typeof getDb>): void {
+  db.exec(`
+    UPDATE accounts SET balance = (
+      SELECT COALESCE(SUM(
+        CASE
+          WHEN t.type IN ('income','dividend','interest') THEN t.amount
+          WHEN t.type IN ('expense','fee')                THEN -t.amount
+          WHEN t.type = 'buy'                             THEN -t.amount
+          WHEN t.type = 'sell'                            THEN  t.amount
+          ELSE t.amount
+        END
+      ), 0)
+      FROM transactions t
+      WHERE t.account_id = accounts.id AND t.status != 'pending'
+    )
+  `)
+}
+
 /**
  * Recalculates an account's balance from its non-pending transactions and
  * persists the result to accounts.balance.

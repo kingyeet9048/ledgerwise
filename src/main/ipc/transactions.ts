@@ -184,15 +184,26 @@ export function registerTransactionHandlers(): void {
       try {
         const db = getDb()
         const now = new Date().toISOString()
+
+        const affectedAccountIds = new Set<string>()
+        const getAccountId = db.prepare('SELECT account_id FROM transactions WHERE id = ?')
         const stmt = db.prepare(
           "UPDATE transactions SET status = 'reviewed', updated_at = ? WHERE id = ?"
         )
+
         const bulkUpdate = db.transaction((txIds: string[]) => {
           for (const txId of txIds) {
+            const row = getAccountId.get(txId) as { account_id: string } | undefined
+            if (row) affectedAccountIds.add(row.account_id)
             stmt.run(now, txId)
           }
         })
         bulkUpdate(ids)
+
+        for (const accountId of affectedAccountIds) {
+          recalcAccountBalance(db, accountId)
+        }
+
         return { success: true, data: ids.length }
       } catch (e) {
         return { success: false, error: (e as Error).message }

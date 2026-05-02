@@ -3,11 +3,13 @@ import { v4 as uuidv4 } from 'uuid'
 import { getDb } from '../database'
 import { DashboardSummary, IpcResponse } from '../../shared/types'
 import { format, startOfMonth, endOfMonth, subMonths } from 'date-fns'
+import { syncAllAccountBalances } from './balance-utils'
 
 export function registerDashboardHandlers(): void {
   ipcMain.handle('dashboard:summary', async (): Promise<IpcResponse<DashboardSummary>> => {
     try {
       const db = getDb()
+      syncAllAccountBalances(db)
       const now = new Date()
       const monthStart = format(startOfMonth(now), 'yyyy-MM-dd')
       const monthEnd = format(endOfMonth(now), 'yyyy-MM-dd')

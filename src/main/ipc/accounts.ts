@@ -2,12 +2,13 @@ import { ipcMain } from 'electron'
 import { v4 as uuidv4 } from 'uuid'
 import { getDb } from '../database'
 import { Account, IpcResponse } from '../../shared/types'
-import { recalcAccountBalance, upsertOpeningBalance } from './balance-utils'
+import { recalcAccountBalance, upsertOpeningBalance, syncAllAccountBalances } from './balance-utils'
 
 export function registerAccountHandlers(): void {
   ipcMain.handle('accounts:list', async (): Promise<IpcResponse<Account[]>> => {
     try {
       const db = getDb()
+      syncAllAccountBalances(db)
       const accounts = db
         .prepare('SELECT * FROM accounts WHERE is_closed = 0 ORDER BY type, name')
         .all() as Account[]

@@ -6,7 +6,12 @@ const pdfParse = require('pdf-parse/lib/pdf-parse') as (buf: Buffer) => Promise<
 
 export async function parseChasePDF(buffer: Buffer): Promise<ParsedTransaction[]> {
   const data = await pdfParse(buffer)
-  return extractChaseTransactions(data.text)
+  // DEBUG — remove once parser is confirmed working
+  console.log('[PDF] raw text (first 3000 chars):\n', data.text.slice(0, 3000))
+  console.log('[PDF] raw text (chars 3000-6000):\n', data.text.slice(3000, 6000))
+  const results = extractChaseTransactions(data.text)
+  console.log(`[PDF] parsed ${results.length} transactions`)
+  return results
 }
 
 /** Returns the raw text extracted from a PDF — used for debugging. */

@@ -78,7 +78,8 @@ const api = {
   // Import
   import: {
     parse: (args: unknown) => ipcRenderer.invoke('import:parse', args),
-    confirm: (args: unknown) => ipcRenderer.invoke('import:confirm', args)
+    confirm: (args: unknown) => ipcRenderer.invoke('import:confirm', args),
+    pdfText: (filePath: string) => ipcRenderer.invoke('import:pdf-text', filePath)
   },
 
   // Projections
